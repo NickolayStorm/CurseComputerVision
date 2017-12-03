@@ -1,3 +1,10 @@
+/* Copyright (C) 2017 Nikolai Pakhtusov - All Rights Reserved
+ * You may use, distribute and modify this code under the
+ * terms of the MIT license.
+ *
+ * You should have received a copy of the MIT license with
+ * this file. If not, please write to: chesterlanduk@gmail.com
+ */
 #include <iostream>
 
 #include <cv.h>
