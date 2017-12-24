@@ -33,7 +33,7 @@ Mat getImage(string& imgFileName){
 }
 
 
-void draw(Mat& image){
+void draw(const Mat& image){
     cv::namedWindow("Img");
     cv::resizeWindow("Img", 200, 200);
     cv::imshow("Display window", image);

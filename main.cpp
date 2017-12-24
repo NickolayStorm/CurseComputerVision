@@ -282,20 +282,20 @@ void fixImage(const Mat& image, std::function<void (Mat&)> callback){
 
 #ifdef DEBUG_MODE
             auto destination = transformation(image, beta);
-            line( destination, Point(transformedLines[0][0], lines[0][1]),
+            line( destination, Point(transformedLines[0][0], transformedLines[0][1]),
                   Point(transformedLines[0][2], transformedLines[0][3]), cv::Scalar(0, 255, 0), 3, 8 );
-            line( destination, Point(transformedLines[1][0], lines[1][1]),
+            line( destination, Point(transformedLines[1][0], transformedLines[1][1]),
                   Point(transformedLines[1][2], transformedLines[1][3]), cv::Scalar(0, 255, 0), 3, 8 );
-            line( destination, Point(transformedLines[1][0], lines[1][1]),
+            line( destination, Point(transformedLines[1][0], transformedLines[1][1]),
                   Point(x, y), cv::Scalar(255, 255, 0), 3, 8 );
-            line( destination, Point(transformedLines[0][0], lines[0][1]),
+            line( destination, Point(transformedLines[0][0], transformedLines[0][1]),
                   Point(x, y), cv::Scalar(255, 255, 0), 3, 8 );
             draw(destination);
 #endif // DEBUG_MODE
 
             cout << "Current: " << x << ", beta: " << beta << endl;
 
-            Side currSide = findSide(lines[0], x);
+            Side currSide = findSide(transformedLines[0], x);
 
             if (currSide != prevSide){
                 goto RESULT;
@@ -316,24 +316,25 @@ void fixImage(const Mat& image, std::function<void (Mat&)> callback){
 
 int main(int argc, char** argv) {
 
-//    assert(argc == 3);
-//
-//    if (strcmp(argv[1], "--data") != 0){
-//        cout << strcmp(argv[0], "--data") << endl;
-//        std::abort();
-//    }
+#ifdef DEBUG_MODE
+    std::string imgName("../data/IMG_0060.JPG");
+#else
+    assert(argc == 3);
 
-//    std::string imgName(argv[2]);
+    if (strcmp(argv[1], "--data") != 0){
+        cout << strcmp(argv[0], "--data") << endl;
+        std::abort();
+    }
 
-    std::string imgName("../data/IMG_0057.JPG");
+    std::string imgName(argv[2]);
+#endif
 
     cout << imgName << endl;
 
     Mat image = getImage(imgName);
     draw(image);
 
-
-    fixImage(image, [](Mat& image){
+    fixImage(image, [](const Mat& image){
                         draw(image);
                     });
 
