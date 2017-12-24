@@ -156,7 +156,7 @@ Mat prepareBeforeLinesFinding(const Mat& image){
 std::vector<cv::Vec4i> findLines(Mat& image){
 
     int minLineLength = 200;
-    int maxLineGap = 10;
+    int maxLineGap = 15;
 
     std::vector<cv::Vec4i> lines;
 
@@ -231,10 +231,11 @@ void fixImage(const Mat& image, std::function<void (Mat&)> callback){
     int beta;
 
     auto lines = findLines(specialImg);
+    assert(lines.size() > 1);
     filterBadLines(lines);
 
     auto findSide = [](cv::Vec4i line, int x) -> Side {
-        if(line[0] > x && line[3] > x){
+        if(line[0] > x && line[2] > x){
             return Side::Left;
         }
         return Side::Right;
@@ -317,7 +318,8 @@ void fixImage(const Mat& image, std::function<void (Mat&)> callback){
 int main(int argc, char** argv) {
 
 #ifdef DEBUG_MODE
-    std::string imgName("../data/IMG_0060.JPG");
+    std::string imgName("../data/IMG_0064.JPG");
+    cout << "DEBUG MODE ON!" << endl;
 #else
     assert(argc == 3);
 
