@@ -19,9 +19,6 @@
 
 #include "help_funcs.cpp"
 
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/imgproc.hpp>
-
 
 using std::experimental::optional;
 using std::pair;
@@ -32,12 +29,19 @@ using cv::Point;
 
 using namespace boost::numeric::ublas;
 
-using Real = double;
+using Real = float;
 
 
 #define ASSUMED_DEGREE 30
 
 #define MINIMAL_TRIANGLE_AREA 1000
+
+#define DEBUG_MODE
+
+enum Side {
+    Right,
+    Left
+};
 
 
 template<typename T1, typename T2>
@@ -70,14 +74,32 @@ std::pair<Real, Real> findEquiationCoeffs(cv::Vec4i points){
 // birds eye view
 
 optional<pair<Real, Real>>
-findIntersectionPoint(std::vector<cv::Vec4i>& lines){
+findIntersectionPoint(const std::vector<cv::Vec4i>& lines){
 
+    if (lines.size() < 2){
+        return std::experimental::nullopt;
+    }
+
+    // TODO: get special lines (instead of two first)
+    auto [k1, b1] = findEquiationCoeffs(lines[0]);
+    auto [k2, b2] = findEquiationCoeffs(lines[1]);
+
+    // TODO: use special library for it (for example LAPACK)
+    //    matrix<Real> A = identity_matrix<Real>(2);
+    //    A(0, 0) = k1; A(0, 1) = b1;
+    //    A(0, 0) = k1; A(0, 1) = b1;
+    Real x = (b2 - b1) / (k1 - k2);
+    Real y = k1 * x + b1;
+
+    return std::make_pair(x, y);
+}
+
+
+void filterBadLines(std::vector<cv::Vec4i>& lines){
     auto isBadLine = [](const cv::Vec4i& line) -> bool{
-        // We think it is bad when it is more then ASSUMED_DEGREE
+        // We think it is bad when it is more then ASSUMED_DEGREE - 1
         auto [k, b] = findEquiationCoeffs(line);
-//        cout << "k: " << k << " tan " << tan(M_PI * (Real)ASSUMED_DEGREE/(Real)180) << endl;
-        if ((tan(-M_PI * (Real)ASSUMED_DEGREE/180)) > k > (tan(M_PI * (Real)ASSUMED_DEGREE/180))){
-//            cout << "Removed" << endl;
+        if ((tan(-M_PI * (Real)(ASSUMED_DEGREE - 1)/180)) > k > (tan(M_PI * (Real)(ASSUMED_DEGREE - 1)/180))){
             return false;
         }
         return true;
@@ -100,8 +122,6 @@ findIntersectionPoint(std::vector<cv::Vec4i>& lines){
         float area1 = (Ax * (By - Cy1) + Bx * (Cy1 - Ay) + Cx1 * (Ay - By)) / 2;
         float area2 = (Ax * (By - Cy2) + Bx * (Cy2 - Ay) + Cx2 * (Ay - By)) / 2;
 
-        cout << area1 << " " << area2 << endl;
-
         if (area1 < MINIMAL_TRIANGLE_AREA && area2 < MINIMAL_TRIANGLE_AREA){
             return true;
         }
@@ -110,7 +130,7 @@ findIntersectionPoint(std::vector<cv::Vec4i>& lines){
 
 
     if (lines.size() < 2){
-        return std::experimental::nullopt;
+        throw std::exception();
     }
 
     auto iter = std::begin(lines) + 1;
@@ -122,23 +142,6 @@ findIntersectionPoint(std::vector<cv::Vec4i>& lines){
             break;
         }
     }
-
-    if (lines.size() < 2){
-        return std::experimental::nullopt;
-    }
-
-    // TODO: get special lines (instead of two first)
-    auto [k1, b1] = findEquiationCoeffs(lines[0]);
-    auto [k2, b2] = findEquiationCoeffs(lines[1]);
-
-    // TODO: use special library for it (for example LAPACK)
-    //    matrix<Real> A = identity_matrix<Real>(2);
-    //    A(0, 0) = k1; A(0, 1) = b1;
-    //    A(0, 0) = k1; A(0, 1) = b1;
-    Real x = (b2 - b1) / (k1 - k2);
-    Real y = k1 * x + b1;
-
-    return std::make_pair(x, y);
 }
 
 
@@ -228,8 +231,19 @@ void fixImage(const Mat& image, std::function<void (Mat&)> callback){
     int beta;
 
     auto lines = findLines(specialImg);
-    auto [previous, y] = findIntersectionPoint(lines)
+    filterBadLines(lines);
+
+    auto findSide = [](cv::Vec4i line, int x) -> Side {
+        if(line[0] > x && line[3] > x){
+            return Side::Left;
+        }
+        return Side::Right;
+    };
+
+    auto [x, y] = findIntersectionPoint(lines)
             .value_or(std::make_pair(0, 0));
+
+    Side prevSide = findSide(lines[0], x);
 
     for (int stepUpDown = -1; stepUpDown < 2; stepUpDown += 2) {
         beta = defaultBeta;
@@ -238,10 +252,10 @@ void fixImage(const Mat& image, std::function<void (Mat&)> callback){
 
             beta += stepUpDown;
 
-            std::vector<cv::Vec4i> newLines(lines.size());
+            std::vector<cv::Vec4i> transformedLines(lines.size());
 
             std::transform(std::begin(lines), std::end(lines),
-                           std::begin(newLines),
+                           std::begin(transformedLines),
                            [=](cv::Vec4i& line) -> cv::Vec4i {
                                std::vector<cv::Point2f> points;
                                points.emplace_back(cv::Point2f(line[0], line[1]));
@@ -262,39 +276,66 @@ void fixImage(const Mat& image, std::function<void (Mat&)> callback){
                                );
                            }
             );
-
-            auto destination = transformation(specialImg, beta);
-
-            auto [current, y] = findIntersectionPoint(newLines)
+            filterBadLines(transformedLines);
+            auto [x, y] = findIntersectionPoint(transformedLines)
                     .value_or(std::make_pair(0, 0));
 
-            cout << "Current: " << current << " previous: " << previous << ", beta: " << beta << endl;
-            // If they have different signs
-            if ((current < 0 && previous > 0) || (current > 0 && previous < 0)) {
+#ifdef DEBUG_MODE
+            auto destination = transformation(image, beta);
+            line( destination, Point(transformedLines[0][0], lines[0][1]),
+                  Point(transformedLines[0][2], transformedLines[0][3]), cv::Scalar(0, 255, 0), 3, 8 );
+            line( destination, Point(transformedLines[1][0], lines[1][1]),
+                  Point(transformedLines[1][2], transformedLines[1][3]), cv::Scalar(0, 255, 0), 3, 8 );
+            line( destination, Point(transformedLines[1][0], lines[1][1]),
+                  Point(x, y), cv::Scalar(255, 255, 0), 3, 8 );
+            line( destination, Point(transformedLines[0][0], lines[0][1]),
+                  Point(x, y), cv::Scalar(255, 255, 0), 3, 8 );
+            draw(destination);
+#endif // DEBUG_MODE
+
+            cout << "Current: " << x << ", beta: " << beta << endl;
+
+            Side currSide = findSide(lines[0], x);
+
+            if (currSide != prevSide){
                 goto RESULT;
             }
-            previous = current;
+
+            prevSide = currSide;
         }
     }
 
     RESULT:
-        cout << "The best beta: " << beta << endl;
-        auto destination = transformation(image, beta);
-        draw(destination);
+
+    cout << "The best beta: " << beta << endl;
+    auto destination = transformation(image, beta);
+    callback(destination);
+
 }
 
 
-int main() {
+int main(int argc, char** argv) {
 
-    std::string imgName("../data/image1.jpg");
+//    assert(argc == 3);
+//
+//    if (strcmp(argv[1], "--data") != 0){
+//        cout << strcmp(argv[0], "--data") << endl;
+//        std::abort();
+//    }
+
+//    std::string imgName(argv[2]);
+
+    std::string imgName("../data/IMG_0057.JPG");
+
+    cout << imgName << endl;
+
     Mat image = getImage(imgName);
     draw(image);
 
-    auto callBack = [](Mat& image){
-        draw(image);
-    };
 
-    fixImage(image, callBack);
+    fixImage(image, [](Mat& image){
+                        draw(image);
+                    });
 
 
     return EXIT_SUCCESS;
