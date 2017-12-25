@@ -99,7 +99,7 @@ void filterBadLines(std::vector<cv::Vec4i>& lines){
     auto isBadLine = [](const cv::Vec4i& line) -> bool{
         // We think it is bad when it is more then ASSUMED_DEGREE - 1
         auto [k, b] = findEquiationCoeffs(line);
-        if ((tan(-M_PI * (Real)(ASSUMED_DEGREE - 1)/180)) > k > (tan(M_PI * (Real)(ASSUMED_DEGREE - 1)/180))){
+        if (k < (tan(-M_PI * (Real)(ASSUMED_DEGREE - 1)/180)) && k > (tan(M_PI * (Real)(ASSUMED_DEGREE - 1)/180))){
             return false;
         }
         return true;
@@ -318,7 +318,7 @@ void fixImage(const Mat& image, std::function<void (Mat&)> callback){
 int main(int argc, char** argv) {
 
 #ifdef DEBUG_MODE
-    std::string imgName("../data/IMG_0064.JPG");
+    std::string imgName("../data/IMG_0047.JPG");
     cout << "DEBUG MODE ON!" << endl;
 #else
     assert(argc == 3);
