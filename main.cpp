@@ -38,6 +38,8 @@ using Real = float;
 
 #define DEBUG_MODE
 
+//#define TEST_MODE
+
 enum Side {
     Right,
     Left
@@ -99,10 +101,39 @@ void filterBadLines(std::vector<cv::Vec4i>& lines){
     auto isBadLine = [](const cv::Vec4i& line) -> bool{
         // We think it is bad when it is more then ASSUMED_DEGREE - 1
         auto [k, b] = findEquiationCoeffs(line);
-        if (k < (tan(-M_PI * (Real)(ASSUMED_DEGREE - 1)/180)) && k > (tan(M_PI * (Real)(ASSUMED_DEGREE - 1)/180))){
-            return false;
+//        cout << "k: " << k << " b: " << b << endl;
+        double tangent = tan(M_PI * (Real)(ASSUMED_DEGREE + 1)/180);
+        if (k < 0){
+            if (k > -tangent){
+                return true;
+            }
         }
-        return true;
+        if (k > 0){
+            if (k > tangent){
+                return true;
+            }
+        }
+        return false;
+//        int x1 = line[0];
+//        int y1 = line[1];
+//        int x2 = line[2];
+//        int y2 = line[3];
+//
+//        int catheter1 = abs(x1 - x2);
+//        int catheter2 = abs(y1 - y2);
+//
+//        if (catheter2 == 0){
+//            return false;
+//        }
+////        cout << (1/sqrt(3)) << endl;
+////        cout << catheter1/catheter2 << endl;
+//        if ((Real)catheter2/(Real)catheter1 < (1/sqrt(3))){
+//            cout << (Real)catheter1/(Real)catheter2 << endl;
+//            return true;
+//        }
+//
+//        return false;
+
     };
 
     std::remove_if(lines.begin(), lines.end(), isBadLine);
@@ -134,11 +165,11 @@ void filterBadLines(std::vector<cv::Vec4i>& lines){
     }
 
     auto iter = std::begin(lines) + 1;
-    for(; iter != std::end(lines); ++iter) {
+    for(; iter != std::end(lines);) {
         if(isOnOneLine(lines[0], *iter)){
-
             lines.erase(iter);
         } else {
+            ++iter;
             break;
         }
     }
@@ -147,7 +178,7 @@ void filterBadLines(std::vector<cv::Vec4i>& lines){
 
 Mat prepareBeforeLinesFinding(const Mat& image){
     Mat tempImg, destImg;
-    cv::cvtColor(image, tempImg, cv::COLOR_BGR2Lab);
+    cv::cvtColor(image, tempImg, cv::COLOR_BGR2BGRA);
     cv::Canny(tempImg, destImg, 1000, 10, 3);
     return destImg;
 }
@@ -156,7 +187,7 @@ Mat prepareBeforeLinesFinding(const Mat& image){
 std::vector<cv::Vec4i> findLines(Mat& image){
 
     int minLineLength = 200;
-    int maxLineGap = 15;
+    int maxLineGap = 25;
 
     std::vector<cv::Vec4i> lines;
 
@@ -223,16 +254,34 @@ Mat transformation(const Mat& source, int beta_){
 }
 
 
-void fixImage(const Mat& image, std::function<void (Mat&)> callback){
+void fixImage(const Mat& image, std::function<void (Mat&, int)> callback){
 
     auto specialImg = prepareBeforeLinesFinding(image);
+#ifdef DEBUG_MODE
+    draw(specialImg);
+#endif
 
     int defaultBeta = 90;
     int beta;
 
     auto lines = findLines(specialImg);
+#ifdef DEBUG_MODE
+    auto tempImg = image;
+    for(auto&l : lines){
+        line( tempImg, Point(l[0], l[1]),
+              Point(l[2], l[3]), cv::Scalar(0, 255, 0), 2, 8 );
+    }
+    draw(tempImg);
+#endif
     assert(lines.size() > 1);
     filterBadLines(lines);
+#ifdef DEBUG_MODE
+    for(auto&l : lines){
+        line( tempImg, Point(l[0], l[1]),
+              Point(l[2], l[3]), cv::Scalar(0, 255, 255), 2, 8 );
+    }
+    draw(tempImg);
+#endif
 
     auto findSide = [](cv::Vec4i line, int x) -> Side {
         if(line[0] > x && line[2] > x){
@@ -262,7 +311,7 @@ void fixImage(const Mat& image, std::function<void (Mat&)> callback){
                                points.emplace_back(cv::Point2f(line[0], line[1]));
                                points.emplace_back(cv::Point2f(line[2], line[3]));
 
-                               auto m = generateMatrix(specialImg, beta);
+                               auto m = generateMatrix(specialImg, beta); // In each iteration ??
 
                                std::vector<cv::Point2f> newPoints;
 
@@ -277,24 +326,23 @@ void fixImage(const Mat& image, std::function<void (Mat&)> callback){
                                );
                            }
             );
-            filterBadLines(transformedLines);
+            filterBadLines(transformedLines); // TODO: ????
             auto [x, y] = findIntersectionPoint(transformedLines)
                     .value_or(std::make_pair(0, 0));
 
 #ifdef DEBUG_MODE
             auto destination = transformation(image, beta);
             line( destination, Point(transformedLines[0][0], transformedLines[0][1]),
-                  Point(transformedLines[0][2], transformedLines[0][3]), cv::Scalar(0, 255, 0), 3, 8 );
+                  Point(transformedLines[0][2], transformedLines[0][3]), cv::Scalar(0, 255, 0), 2, 8 );
             line( destination, Point(transformedLines[1][0], transformedLines[1][1]),
-                  Point(transformedLines[1][2], transformedLines[1][3]), cv::Scalar(0, 255, 0), 3, 8 );
+                  Point(transformedLines[1][2], transformedLines[1][3]), cv::Scalar(0, 255, 0), 2, 8 );
             line( destination, Point(transformedLines[1][0], transformedLines[1][1]),
-                  Point(x, y), cv::Scalar(255, 255, 0), 3, 8 );
+                  Point(x, y), cv::Scalar(255, 255, 0), 2, 8 );
             line( destination, Point(transformedLines[0][0], transformedLines[0][1]),
-                  Point(x, y), cv::Scalar(255, 255, 0), 3, 8 );
+                  Point(x, y), cv::Scalar(255, 255, 0), 2, 8 );
             draw(destination);
-#endif // DEBUG_MODE
-
             cout << "Current: " << x << ", beta: " << beta << endl;
+#endif // DEBUG_MODE
 
             Side currSide = findSide(transformedLines[0], x);
 
@@ -308,9 +356,8 @@ void fixImage(const Mat& image, std::function<void (Mat&)> callback){
 
     RESULT:
 
-    cout << "The best beta: " << beta << endl;
     auto destination = transformation(image, beta);
-    callback(destination);
+    callback(destination, beta);
 
 }
 
@@ -318,8 +365,14 @@ void fixImage(const Mat& image, std::function<void (Mat&)> callback){
 int main(int argc, char** argv) {
 
 #ifdef DEBUG_MODE
-    std::string imgName("../data/IMG_0047.JPG");
+//    std::string imgName("../tested_data/image0.JPG");
+//    std::string imgName("../data/IMG_0048.JPG");
+    std::string imgName("../tested_data/IMG_0047.JPG");
     cout << "DEBUG MODE ON!" << endl;
+#else
+#ifdef TEST_MODE
+//    std::string imgName("../tested_data/imageedit_6_2688227020.jpg");
+    std::string imgName("../data/image0.JPG");
 #else
     assert(argc == 3);
 
@@ -329,17 +382,30 @@ int main(int argc, char** argv) {
     }
 
     std::string imgName(argv[2]);
-#endif
+#endif // TEST_MODE
+#endif // DEBUG_MODE
+#ifdef TEST_MODE
+    Mat image = getImage(imgName);
 
+    auto printWrapped = [](Mat& , int beta) -> void {
+        std::cout << beta << std::endl;
+    };
+    fixImage(image, printWrapped);
+
+#else
     cout << imgName << endl;
 
     Mat image = getImage(imgName);
+
+    auto drawWrapped = [](Mat& image, int i = 0) -> void {
+        draw(image);
+    };
+
     draw(image);
 
-    fixImage(image, [](const Mat& image){
-                        draw(image);
-                    });
+    fixImage(image, drawWrapped);
 
 
     return EXIT_SUCCESS;
+#endif
 }
