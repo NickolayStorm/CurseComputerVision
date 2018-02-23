@@ -36,9 +36,9 @@ using Real = float;
 
 #define MINIMAL_TRIANGLE_AREA 1000
 
-#define DEBUG_MODE
+//#define DEBUG_MODE
 
-//#define TEST_MODE
+#define TEST_MODE
 
 enum Side {
     Right,
@@ -372,7 +372,15 @@ int main(int argc, char** argv) {
 #else
 #ifdef TEST_MODE
 //    std::string imgName("../tested_data/imageedit_6_2688227020.jpg");
-    std::string imgName("../data/image0.JPG");
+//    std::string imgName("../data/image0.JPG");
+    assert(argc == 3);
+
+    if (strcmp(argv[1], "--data") != 0){
+        cout << strcmp(argv[0], "--data") << endl;
+        std::abort();
+    }
+
+    std::string imgName(argv[2]);
 #else
     assert(argc == 3);
 
